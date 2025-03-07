@@ -21,6 +21,74 @@ from src.models.pose_encoder import PoseEncoder
 from src.utils.dwpose_util import draw_pose_select_v2
 from src.models.dwpose.dwpose_detector import dwpose_detector as dwprocessor
 
+import gdown
+import requests
+import urllib.request
+from tqdm import tqdm
+
+def download_file_with_progress(url, destination):
+    """Scarica un file con barra di progresso"""
+    response = requests.get(url, stream=True)
+    total_size = int(response.headers.get('content-length', 0))
+    block_size = 1024  # 1 Kibibyte
+    
+    with open(destination, 'wb') as file, tqdm(
+            desc=os.path.basename(destination),
+            total=total_size,
+            unit='iB',
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as bar:
+        for data in response.iter_content(block_size):
+            size = file.write(data)
+            bar.update(size)
+
+def setup_dwpose_models():
+    """Scarica i modelli DWPose necessari se non esistono"""
+    models_dir = "./pretrained_weights/dwpose"
+    os.makedirs(models_dir, exist_ok=True)
+    
+    models = {
+        "yolox_l.onnx": "https://huggingface.co/datasets/ZhenbinAI/DWPose/resolve/main/yolox_l.onnx",
+        "dw-ll_ucoco_384.onnx": "https://huggingface.co/datasets/ZhenbinAI/DWPose/resolve/main/dw-ll_ucoco_384.onnx"
+    }
+    
+    for model_name, url in models.items():
+        destination = os.path.join(models_dir, model_name)
+        if not os.path.exists(destination):
+            print(f"Scaricamento di {model_name}...")
+            try:
+                download_file_with_progress(url, destination)
+                print(f"{model_name} scaricato con successo!")
+            except Exception as e:
+                print(f"Errore durante il download di {model_name}: {e}")
+                return False
+    
+    # Modifica il file DWPose detector per utilizzare i percorsi corretti
+    dwpose_detector_path = "./src/models/dwpose/dwpose_detector.py"
+    if os.path.exists(dwpose_detector_path):
+        with open(dwpose_detector_path, 'r') as file:
+            content = file.read()
+        
+        # Sostituisci i percorsi segnaposto con quelli corretti
+        content = content.replace(
+            '"your_path_to_yolox_l.onnx"', 
+            f'"{os.path.abspath(os.path.join(models_dir, "yolox_l.onnx"))}"'
+        )
+        content = content.replace(
+            '"your_path_to_dw-ll_ucoco_384.onnx"', 
+            f'"{os.path.abspath(os.path.join(models_dir, "dw-ll_ucoco_384.onnx"))}"'
+        )
+        
+        with open(dwpose_detector_path, 'w') as file:
+            file.write(content)
+        
+        print("File di configurazione DWPose aggiornato con successo!")
+    else:
+        print(f"File {dwpose_detector_path} non trovato!")
+        return False
+    
+    return True
 # Configura ffmpeg
 ffmpeg_path = './ffmpeg-4.4-amd64-static'
 if ffmpeg_path not in os.getenv('PATH', ''):
@@ -528,6 +596,11 @@ def create_avatar_from_video(
 
 # Esempio di utilizzo della funzione
 if __name__ == "__main__":
+    # Scarica i modelli DWPose prima di tutto
+    if not setup_dwpose_models():
+        print("Errore nel setup dei modelli DWPose. Uscita.")
+        sys.exit(1)
+        
     if len(sys.argv) < 2:
         print("Uso: python script.py percorso_al_video [percorso_audio] [frame_numero]")
         sys.exit(1)
