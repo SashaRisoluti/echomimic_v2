@@ -34,3 +34,6 @@ scenedetect
 moviepy==1.0.3
 huggingface_hub==0.26.2
 mediapipe
+requests>=2.28.0
+tqdm>=4.64.0
+gdown>=4.7.1
